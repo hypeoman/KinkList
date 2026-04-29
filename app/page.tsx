@@ -1,0 +1,595 @@
+"use client";
+
+import { toPng } from "html-to-image";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import styles from "./page.module.css";
+import { type Locale, localeMessages, localeOptions, type Theme } from "@/lib/i18n";
+import {
+  DEFAULT_OPTIONS,
+  type AnswersState,
+  createAnswerKey,
+  createSummaryText,
+  deserializePayload,
+  parseConfig,
+  serializePayload
+} from "@/lib/kinklist";
+
+const FALLBACK_CONFIG = `# Soft Limits
+(You, Partner)
+* Holding hands ::: For sweet and comforting physical closeness
+* Kissing ::: Includes soft kisses or more heated make-out sessions
+* Cuddling ::: Blankets, naps, movie nights and other cozy contact
+
+# Power Dynamics
+(You, Partner)
+* Praise ::: Verbal approval, encouragement and affirming language
+* Light restraint ::: Soft cuffs, ribbons or similar gentle restriction
+* Service ::: Doing tasks or acts of care for a partner
+
+# Exploration
+(You, Partner)
+* Sensory play ::: Temperature, textures, blindfolds and similar sensations
+* Roleplay ::: Playing through characters or situations together
+* Exhibitionism ::: Being seen or imagining being seen`;
+
+type SharedState = {
+  config?: string;
+  answers?: AnswersState;
+  locale?: Locale;
+  theme?: Theme;
+};
+
+function downloadFile(filename: string, contents: string, mimeType: string) {
+  const blob = new Blob([contents], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+function buildShareUrl(sharedState: SharedState) {
+  const url = new URL(window.location.href);
+  const params = new URLSearchParams();
+
+  if (sharedState.config) {
+    params.set("config", serializePayload(sharedState.config));
+  }
+
+  if (sharedState.answers && Object.keys(sharedState.answers).length > 0) {
+    params.set("answers", serializePayload(sharedState.answers));
+  }
+
+  if (sharedState.locale && sharedState.locale !== "ru") {
+    params.set("locale", serializePayload(sharedState.locale));
+  }
+
+  if (sharedState.theme && sharedState.theme !== "light") {
+    params.set("theme", serializePayload(sharedState.theme));
+  }
+
+  url.search = params.toString();
+  return url.toString();
+}
+
+export default function HomePage() {
+  const [locale, setLocale] = useState<Locale>("ru");
+  const [theme, setTheme] = useState<Theme>("light");
+  const [rawConfig, setRawConfig] = useState(FALLBACK_CONFIG);
+  const [defaultConfig, setDefaultConfig] = useState(FALLBACK_CONFIG);
+  const [configDraft, setConfigDraft] = useState(FALLBACK_CONFIG);
+  const [answers, setAnswers] = useState<AnswersState>({});
+  const [search, setSearch] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const exportRef = useRef<HTMLDivElement>(null);
+  const exportCardRef = useRef<HTMLDivElement>(null);
+  const [exportName, setExportName] = useState("");
+
+  useEffect(() => {
+    let isCancelled = false;
+    const url = new URL(window.location.href);
+    const sharedConfig = deserializePayload<string>(url.searchParams.get("config"));
+    const sharedAnswers = deserializePayload<AnswersState>(url.searchParams.get("answers"));
+    const sharedLocale = deserializePayload<Locale>(url.searchParams.get("locale"));
+    const sharedTheme = deserializePayload<Theme>(url.searchParams.get("theme"));
+
+    async function loadConfig() {
+      try {
+        const response = await fetch("default-config.txt");
+        const fileConfig = response.ok ? await response.text() : FALLBACK_CONFIG;
+        if (isCancelled) {
+          return;
+        }
+
+        setDefaultConfig(fileConfig);
+        setRawConfig(sharedConfig ?? fileConfig);
+        setConfigDraft(sharedConfig ?? fileConfig);
+        setAnswers(sharedAnswers ?? {});
+        setLocale(sharedLocale === "en" ? "en" : "ru");
+        setTheme(sharedTheme === "dark" ? "dark" : "light");
+      } catch {
+        if (!isCancelled) {
+          setDefaultConfig(FALLBACK_CONFIG);
+          setRawConfig(sharedConfig ?? FALLBACK_CONFIG);
+          setConfigDraft(sharedConfig ?? FALLBACK_CONFIG);
+          setAnswers(sharedAnswers ?? {});
+          setLocale(sharedLocale === "en" ? "en" : "ru");
+          setTheme(sharedTheme === "dark" ? "dark" : "light");
+        }
+      }
+    }
+
+    loadConfig();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const t = localeMessages[locale];
+  const deferredSearch = useDeferredValue(search.trim().toLowerCase());
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--bg", theme === "dark" ? "linear-gradient(180deg, #1e161b 0%, #251a22 45%, #141015 100%)" : "linear-gradient(180deg, #f7ecf2 0%, #f6f1e9 45%, #fff9f5 100%)");
+    document.documentElement.style.setProperty("--text", theme === "dark" ? "#f7e8e1" : "#2c1a1a");
+  }, [theme]);
+
+  const parsedConfig = useMemo(
+    () =>
+      parseConfig(rawConfig, {
+        anonymousSection: t.anonymousSection,
+        untitledSection: t.untitledSection,
+        untitledItem: t.untitledItem
+      }),
+    [rawConfig, t]
+  );
+  const options = parsedConfig.options.length > 0 ? parsedConfig.options : DEFAULT_OPTIONS;
+  const filteredSections = useMemo(() => {
+    if (!deferredSearch) {
+      return parsedConfig.sections;
+    }
+
+    return parsedConfig.sections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => {
+          const haystack = `${item.title} ${item.hint ?? ""}`.toLowerCase();
+          return haystack.includes(deferredSearch);
+        })
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [deferredSearch, parsedConfig.sections]);
+
+  const shareUrl = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? ""
+        : buildShareUrl({
+            config: rawConfig !== defaultConfig ? rawConfig : undefined,
+            answers,
+            locale,
+            theme
+          }),
+    [answers, defaultConfig, locale, rawConfig, theme]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const nextUrl = buildShareUrl({
+      config: rawConfig !== defaultConfig ? rawConfig : undefined,
+      answers,
+      locale,
+      theme
+    });
+
+    window.history.replaceState({}, "", nextUrl);
+  }, [answers, defaultConfig, locale, rawConfig, theme]);
+
+  function setAnswer(cellKey: string, optionId: string) {
+    setAnswers((currentAnswers) => ({
+      ...currentAnswers,
+      [cellKey]: optionId
+    }));
+  }
+
+  async function copyText(value: string, successMessage: string) {
+    await navigator.clipboard.writeText(value);
+    setStatusMessage(successMessage);
+  }
+
+  async function handleExportImage() {
+    const enteredName = window.prompt(t.exportPromptName, exportName || t.exportDefaultName);
+    if (enteredName === null) {
+      return;
+    }
+
+    const normalizedName = enteredName.trim() || t.exportDefaultName;
+    setExportName(normalizedName);
+    await waitForNextPaint();
+
+    if (!exportCardRef.current) {
+      return;
+    }
+
+    const dataUrl = await toPng(exportCardRef.current, {
+      cacheBust: true,
+      pixelRatio: 2.2,
+      backgroundColor: "#fff8f4"
+    });
+    const link = document.createElement("a");
+    link.download = `${t.exportFilePrefix}-${normalizedName.replace(/[^\p{L}\p{N}\-_ ]/gu, "").trim() || "export"}.png`;
+    link.href = dataUrl;
+    link.click();
+    setStatusMessage(t.exportedPng);
+  }
+
+  async function handleCopyLink() {
+    await copyText(shareUrl, t.copiedLink);
+  }
+
+  async function handleCopyText() {
+    await copyText(
+      createSummaryText(parsedConfig.sections, answers, options),
+      t.copiedText
+    );
+  }
+
+  function handleDownloadText() {
+    downloadFile(
+      "kinklist.txt",
+      createSummaryText(parsedConfig.sections, answers, options),
+      "text/plain;charset=utf-8"
+    );
+    setStatusMessage(t.exportedTxt);
+  }
+
+  function handleConfigApply(nextValue: string) {
+    startTransition(() => {
+      setRawConfig(nextValue);
+      setConfigDraft(nextValue);
+      setAnswers({});
+      setStatusMessage(t.configUpdated);
+    });
+  }
+
+  const totalItems = parsedConfig.sections.reduce((sum, section) => sum + section.items.length, 0);
+  const answeredCount = Object.entries(answers).filter(
+    ([, value]) => value && value !== "not-entered"
+  ).length;
+  const optionMap = useMemo(() => new Map(options.map((option) => [option.id, option])), [options]);
+
+  return (
+    <main className={`${styles.page} ${theme === "dark" ? styles.themeDark : styles.themeLight}`}>
+      <div className={styles.shell}>
+        <aside className={styles.panel}>
+          <p className={styles.eyebrow}>{t.eyebrow}</p>
+          <h1 className={styles.title}>{t.title}</h1>
+          <p className={styles.lead}>{t.lead}</p>
+
+          <section className={styles.legend}>
+            <p className={styles.legendTitle}>{t.legendTitle}</p>
+            <div className={styles.legendGrid}>
+              {options.map((option) => (
+                <div className={styles.legendItem} key={option.id}>
+                  <span className={styles.swatch} style={{ background: option.color }} />
+                  <span>{option.label}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <div className={styles.toggleWrap}>
+            <p className={styles.toggleLabel}>{t.localeLabel}</p>
+            <select
+              className={styles.selectInput}
+              onChange={(event) => setLocale(event.target.value as Locale)}
+              value={locale}
+            >
+              {localeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t[option.labelKey]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.toggleWrap}>
+            <p className={styles.toggleLabel}>{t.themeLabel}</p>
+            <div className={styles.toggleGrid}>
+              <button
+                className={`${styles.toggleButton} ${theme === "light" ? styles.toggleButtonActive : ""}`}
+                onClick={() => setTheme("light")}
+                type="button"
+              >
+                {t.lightTheme}
+              </button>
+              <button
+                className={`${styles.toggleButton} ${theme === "dark" ? styles.toggleButtonActive : ""}`}
+                onClick={() => setTheme("dark")}
+                type="button"
+              >
+                {t.darkTheme}
+              </button>
+            </div>
+          </div>
+
+          <div className={styles.actions}>
+            <button className={styles.actionPrimary} onClick={handleExportImage} type="button">
+              {t.downloadPng}
+            </button>
+            <button className={styles.actionSecondary} onClick={handleDownloadText} type="button">
+              {t.downloadTxt}
+            </button>
+            <button className={styles.actionGhost} onClick={handleCopyText} type="button">
+              {t.copyText}
+            </button>
+            <button className={styles.actionGhost} onClick={handleCopyLink} type="button">
+              {t.copyLink}
+            </button>
+          </div>
+
+          <div className={styles.metaList}>
+            <div className={styles.metaCard}>
+              <strong>{parsedConfig.sections.length}</strong>
+              <span>{t.sections}</span>
+            </div>
+            <div className={styles.metaCard}>
+              <strong>{totalItems}</strong>
+              <span>{t.items}</span>
+            </div>
+            <div className={styles.metaCard}>
+              <strong>{options.length}</strong>
+              <span>{t.variants}</span>
+            </div>
+            <div className={styles.metaCard}>
+              <strong>{answeredCount}</strong>
+              <span>{t.answeredCells}</span>
+            </div>
+          </div>
+
+          <div className={styles.searchWrap}>
+            <label className={styles.searchLabel} htmlFor="search">
+              {t.searchLabel}
+            </label>
+            <input
+              className={styles.searchInput}
+              id="search"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t.searchPlaceholder}
+              value={search}
+            />
+          </div>
+
+          <div className={styles.actions}>
+            <button
+              className={styles.actionSecondary}
+              onClick={() => setIsConfigOpen((currentValue) => !currentValue)}
+              type="button"
+            >
+              {isConfigOpen ? t.hideConfigure : t.configure}
+            </button>
+          </div>
+
+          {isConfigOpen ? (
+            <section className={styles.configWrap}>
+              <label className={styles.configLabel} htmlFor="config">
+                {t.configLabel}
+              </label>
+              <textarea
+                className={styles.configInput}
+                id="config"
+                onChange={(event) => setConfigDraft(event.target.value)}
+                spellCheck={false}
+                value={configDraft}
+              />
+              <div className={styles.configActions}>
+                <button
+                  className={styles.actionPrimary}
+                  onClick={() => handleConfigApply(configDraft)}
+                  type="button"
+                >
+                  {t.applyConfig}
+                </button>
+                <button
+                  className={styles.actionGhost}
+                  onClick={() => {
+                    setConfigDraft(defaultConfig);
+                    handleConfigApply(defaultConfig);
+                  }}
+                  type="button"
+                >
+                  {t.restoreDefault}
+                </button>
+              </div>
+              <p className={styles.hint}>{t.configFormatHelp}</p>
+            </section>
+          ) : null}
+
+          <div className={styles.status}>{isPending ? t.updatingConfig : statusMessage}</div>
+        </aside>
+
+        <section className={styles.board} ref={exportRef}>
+          <div className={styles.boardHeader}>
+            <div>
+              <h2 className={styles.boardTitle}>{t.boardTitle}</h2>
+              <p className={styles.boardText}>{t.boardText}</p>
+            </div>
+            <div className={styles.inlineActions}>
+              <button
+                className={styles.actionGhost}
+                onClick={() => setAnswers({})}
+                type="button"
+              >
+                {t.resetAnswers}
+              </button>
+            </div>
+          </div>
+
+          {filteredSections.length === 0 ? (
+            <div className={styles.empty}>{t.noResults}</div>
+          ) : (
+            <div className={styles.sections}>
+              {filteredSections.map((section) => (
+                <article className={styles.section} key={section.id}>
+                  <div className={styles.sectionHeader}>
+                    <h3 className={styles.sectionTitle}>{section.title}</h3>
+                  </div>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>{t.itemColumn}</th>
+                          {section.columns.map((column, index) => (
+                            <th key={column}>{column}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {section.items.map((item) => (
+                          <tr key={item.id}>
+                            <td
+                              className={
+                                section.columns.length === 0 ? styles.itemOnlyCell : styles.itemCell
+                              }
+                            >
+                              <div className={styles.itemTitle}>{item.title}</div>
+                              {item.hint ? <div className={styles.itemHint}>{item.hint}</div> : null}
+                            </td>
+                            {section.columns.map((column, columnIndex) => {
+                              const cellKey = createAnswerKey(section.id, item.id, columnIndex);
+                              const selectedValue = answers[cellKey] ?? "not-entered";
+
+                              return (
+                                <td className={styles.cell} key={`${column}-${item.id}`}>
+                                  <div className={styles.choiceGrid}>
+                                    {options.map((option) => {
+                                      const isSelected = selectedValue === option.id;
+                                      return (
+                                        <button
+                                          className={`${styles.optionButton} ${
+                                            isSelected ? styles.optionButtonSelected : styles.optionButtonMuted
+                                          }`}
+                                          aria-label={option.label}
+                                          key={option.id}
+                                          onClick={() => setAnswer(cellKey, option.id)}
+                                          style={{
+                                            background: option.color
+                                          }}
+                                          title={option.label}
+                                          type="button"
+                                        />
+                                      );
+                                    })}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <div
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          left: "-10000px",
+          top: 0,
+          pointerEvents: "none"
+        }}
+      >
+        <div className={`${styles.exportBoard} ${theme === "dark" ? styles.themeDark : styles.themeLight}`} ref={exportCardRef}>
+          <div className={styles.exportHeader}>
+            <div>
+              <h2 className={styles.exportName}>{exportName || t.exportDefaultName}</h2>
+              <p className={styles.exportMeta}>{t.exportSubtitle}</p>
+            </div>
+            <div className={styles.legendGrid}>
+              {options.map((option) => (
+                <div className={styles.legendItem} key={`export-${option.id}`}>
+                  <span className={styles.swatch} style={{ background: option.color }} />
+                  <span>{option.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.sections}>
+            {parsedConfig.sections.map((section) => (
+              <article className={styles.section} key={`export-section-${section.id}`}>
+                <div className={styles.sectionHeader}>
+                  <h3 className={styles.sectionTitle}>{section.title}</h3>
+                </div>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>{t.itemColumn}</th>
+                        {section.columns.map((column) => (
+                          <th key={`export-column-${section.id}-${column}`}>{column}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {section.items.map((item) => (
+                        <tr key={`export-item-${item.id}`}>
+                          <td
+                            className={
+                              section.columns.length === 0 ? styles.itemOnlyCell : styles.itemCell
+                            }
+                          >
+                            <div className={styles.itemTitle}>{item.title}</div>
+                            {item.hint ? <div className={styles.itemHint}>{item.hint}</div> : null}
+                          </td>
+                          {section.columns.map((column, columnIndex) => {
+                            const cellKey = createAnswerKey(section.id, item.id, columnIndex);
+                            const selectedId = answers[cellKey] ?? "not-entered";
+                            const selectedOption = optionMap.get(selectedId) ?? optionMap.get("not-entered");
+
+                            return (
+                              <td className={styles.cell} key={`export-cell-${column}-${item.id}`}>
+                                <span
+                                  className={styles.answerBadge}
+                                  style={{
+                                    background: selectedOption?.color ?? "#ffffff",
+                                    color: selectedOption?.textColor ?? "#2c1a1a"
+                                  }}
+                                >
+                                  {selectedOption?.label ?? t.notEnteredLabel}
+                                </span>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
