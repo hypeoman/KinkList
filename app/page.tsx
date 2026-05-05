@@ -14,24 +14,6 @@ import {
   serializePayload
 } from "@/lib/kinklist";
 
-const FALLBACK_CONFIG = `# Soft Limits
-(You, Partner)
-* Holding hands ::: For sweet and comforting physical closeness
-* Kissing ::: Includes soft kisses or more heated make-out sessions
-* Cuddling ::: Blankets, naps, movie nights and other cozy contact
-
-# Power Dynamics
-(You, Partner)
-* Praise ::: Verbal approval, encouragement and affirming language
-* Light restraint ::: Soft cuffs, ribbons or similar gentle restriction
-* Service ::: Doing tasks or acts of care for a partner
-
-# Exploration
-(You, Partner)
-* Sensory play ::: Temperature, textures, blindfolds and similar sensations
-* Roleplay ::: Playing through characters or situations together
-* Exhibitionism ::: Being seen or imagining being seen`;
-
 type SharedState = {
   config?: string;
   answers?: AnswersState;
@@ -82,11 +64,12 @@ function buildShareUrl(sharedState: SharedState) {
 }
 
 export default function HomePage() {
+  const englishDefaults = localeMessages.en;
   const [locale, setLocale] = useState<Locale>("ru");
   const [theme, setTheme] = useState<Theme>("light");
-  const [rawConfig, setRawConfig] = useState(FALLBACK_CONFIG);
-  const [defaultConfig, setDefaultConfig] = useState(FALLBACK_CONFIG);
-  const [configDraft, setConfigDraft] = useState(FALLBACK_CONFIG);
+  const [rawConfig, setRawConfig] = useState(englishDefaults.defaultConfig);
+  const [defaultConfig, setDefaultConfig] = useState(englishDefaults.defaultConfig);
+  const [configDraft, setConfigDraft] = useState(englishDefaults.defaultConfig);
   const [answers, setAnswers] = useState<AnswersState>({});
   const [search, setSearch] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -94,6 +77,8 @@ export default function HomePage() {
   const [isPending, startTransition] = useTransition();
   const exportRef = useRef<HTMLDivElement>(null);
   const exportCardRef = useRef<HTMLDivElement>(null);
+  const initializedRef = useRef(false);
+  const previousDefaultConfigRef = useRef(englishDefaults.defaultConfig);
   const [exportName, setExportName] = useState("");
 
   useEffect(() => {
@@ -103,34 +88,21 @@ export default function HomePage() {
     const sharedAnswers = deserializePayload<AnswersState>(url.searchParams.get("answers"));
     const sharedLocale = deserializePayload<Locale>(url.searchParams.get("locale"));
     const sharedTheme = deserializePayload<Theme>(url.searchParams.get("theme"));
+    const resolvedLocale = sharedLocale === "en" ? "en" : "ru";
+    const localeDefaults = localeMessages[resolvedLocale] ?? englishDefaults;
+    const resolvedDefaultConfig = localeDefaults.defaultConfig || englishDefaults.defaultConfig;
 
-    async function loadConfig() {
-      try {
-        const response = await fetch("default-config.txt");
-        const fileConfig = response.ok ? await response.text() : FALLBACK_CONFIG;
-        if (isCancelled) {
-          return;
-        }
-
-        setDefaultConfig(fileConfig);
-        setRawConfig(sharedConfig ?? fileConfig);
-        setConfigDraft(sharedConfig ?? fileConfig);
-        setAnswers(sharedAnswers ?? {});
-        setLocale(sharedLocale === "en" ? "en" : "ru");
-        setTheme(sharedTheme === "dark" ? "dark" : "light");
-      } catch {
-        if (!isCancelled) {
-          setDefaultConfig(FALLBACK_CONFIG);
-          setRawConfig(sharedConfig ?? FALLBACK_CONFIG);
-          setConfigDraft(sharedConfig ?? FALLBACK_CONFIG);
-          setAnswers(sharedAnswers ?? {});
-          setLocale(sharedLocale === "en" ? "en" : "ru");
-          setTheme(sharedTheme === "dark" ? "dark" : "light");
-        }
-      }
+    if (!isCancelled) {
+      previousDefaultConfigRef.current = resolvedDefaultConfig;
+      setLocale(resolvedLocale);
+      setTheme(sharedTheme === "dark" ? "dark" : "light");
+      setDefaultConfig(resolvedDefaultConfig);
+      setRawConfig(sharedConfig ?? resolvedDefaultConfig);
+      setConfigDraft(sharedConfig ?? resolvedDefaultConfig);
+      setAnswers(sharedAnswers ?? {});
+      initializedRef.current = true;
     }
 
-    loadConfig();
     return () => {
       isCancelled = true;
     };
@@ -138,6 +110,29 @@ export default function HomePage() {
 
   const t = localeMessages[locale];
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
+
+  useEffect(() => {
+    if (!initializedRef.current) {
+      return;
+    }
+
+    const nextLocaleDefaults = localeMessages[locale] ?? englishDefaults;
+    const nextDefaultConfig = nextLocaleDefaults.defaultConfig || englishDefaults.defaultConfig;
+    const previousDefaultConfig = previousDefaultConfigRef.current;
+    const shouldReplaceRawConfig = rawConfig === previousDefaultConfig;
+    const shouldReplaceDraft = configDraft === previousDefaultConfig;
+
+    previousDefaultConfigRef.current = nextDefaultConfig;
+    setDefaultConfig(nextDefaultConfig);
+
+    if (shouldReplaceRawConfig) {
+      setRawConfig(nextDefaultConfig);
+    }
+
+    if (shouldReplaceDraft) {
+      setConfigDraft(nextDefaultConfig);
+    }
+  }, [configDraft, englishDefaults.defaultConfig, locale, rawConfig]);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--bg", theme === "dark" ? "linear-gradient(180deg, #1e161b 0%, #251a22 45%, #141015 100%)" : "linear-gradient(180deg, #f7ecf2 0%, #f6f1e9 45%, #fff9f5 100%)");
@@ -291,20 +286,22 @@ export default function HomePage() {
             </div>
           </section>
 
-          <div className={styles.toggleWrap}>
-            <p className={styles.toggleLabel}>{t.localeLabel}</p>
-            <select
-              className={styles.selectInput}
-              onChange={(event) => setLocale(event.target.value as Locale)}
-              value={locale}
-            >
-              {localeOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {t[option.labelKey]}
-                </option>
-              ))}
-            </select>
-          </div>
+            <div className={styles.toggleWrap}>
+              <p className={styles.toggleLabel}>{t.localeLabel}</p>
+              <div className={styles.selectWrap}>
+                <select
+                  className={styles.selectInput}
+                  onChange={(event) => setLocale(event.target.value as Locale)}
+                  value={locale}
+                >
+                  {localeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {t[option.labelKey]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
           <div className={styles.toggleWrap}>
             <p className={styles.toggleLabel}>{t.themeLabel}</p>
@@ -447,60 +444,53 @@ export default function HomePage() {
                   <div className={styles.sectionHeader}>
                     <h3 className={styles.sectionTitle}>{section.title}</h3>
                   </div>
-                  <div className={styles.tableWrap}>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th>{t.itemColumn}</th>
-                          {section.columns.map((column, index) => (
-                            <th key={column}>{column}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {section.items.map((item) => (
-                          <tr key={item.id}>
-                            <td
-                              className={
-                                section.columns.length === 0 ? styles.itemOnlyCell : styles.itemCell
-                              }
-                            >
-                              <div className={styles.itemTitle}>{item.title}</div>
-                              {item.hint ? <div className={styles.itemHint}>{item.hint}</div> : null}
-                            </td>
-                            {section.columns.map((column, columnIndex) => {
-                              const cellKey = createAnswerKey(section.id, item.id, columnIndex);
-                              const selectedValue = answers[cellKey] ?? "not-entered";
+                  <div className={styles.itemsList}>
+                    {section.items.map((item) => (
+                      <div className={styles.itemRow} key={item.id}>
+                        <div className={styles.itemMeta}>
+                          <div className={styles.itemTitle}>{item.title}</div>
+                          {item.hint ? <div className={styles.itemHint}>{item.hint}</div> : null}
+                        </div>
+                        <div className={styles.answersGrid}>
+                          {section.columns.map((column, columnIndex) => {
+                            const cellKey = createAnswerKey(section.id, item.id, columnIndex);
+                            const selectedValue = answers[cellKey] ?? "not-entered";
 
-                              return (
-                                <td className={styles.cell} key={`${column}-${item.id}`}>
-                                  <div className={styles.choiceGrid}>
-                                    {options.map((option) => {
-                                      const isSelected = selectedValue === option.id;
-                                      return (
-                                        <button
-                                          className={`${styles.optionButton} ${
-                                            isSelected ? styles.optionButtonSelected : styles.optionButtonMuted
-                                          }`}
-                                          aria-label={option.label}
-                                          key={option.id}
-                                          onClick={() => setAnswer(cellKey, option.id)}
-                                          style={{
-                                            background: option.color
-                                          }}
-                                          title={option.label}
-                                          type="button"
-                                        />
-                                      );
-                                    })}
-                                  </div>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                            return (
+                              <div className={styles.answerColumn} key={`${section.id}-${item.id}-${columnIndex}`}>
+                                <div
+                                  className={`${styles.answerColumnHeader} ${
+                                    column ? "" : styles.answerColumnHeaderEmpty
+                                  }`}
+                                >
+                                  {column || " "}
+                                </div>
+                                <div className={styles.choiceGrid}>
+                                  {options.map((option) => {
+                                    const isSelected = selectedValue === option.id;
+                                    return (
+                                      <button
+                                        className={`${styles.optionButton} ${
+                                          isSelected ? styles.optionButtonSelected : styles.optionButtonMuted
+                                        }`}
+                                        aria-label={option.label}
+                                        key={option.id}
+                                        onClick={() => setAnswer(cellKey, option.id)}
+                                        style={{
+                                          background: option.color
+                                        }}
+                                        title={option.label}
+                                        type="button"
+                                      />
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </article>
               ))}
