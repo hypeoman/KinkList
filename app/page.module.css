@@ -287,8 +287,8 @@
 }
 
 .exportBoard {
-  width: 1200px;
-  padding: 28px;
+  width: 1480px;
+  padding: 32px;
   color: var(--page-text);
   background: var(--panel-bg);
 }
@@ -310,6 +310,12 @@
 .exportMeta {
   margin: 8px 0 0;
   color: var(--muted-text);
+}
+
+.exportMetaSecondary {
+  margin: 8px 0 0;
+  color: var(--soft-text);
+  font-size: 0.92rem;
 }
 
 .boardHeader {
@@ -334,6 +340,11 @@
 .sections {
   display: grid;
   gap: 18px;
+}
+
+.exportSections {
+  column-count: 3;
+  column-gap: 18px;
 }
 
 .section {
@@ -465,6 +476,49 @@
   align-items: center;
 }
 
+.exportSection {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 18px;
+  break-inside: avoid;
+}
+
+.exportItems {
+  display: grid;
+  gap: 14px;
+}
+
+.exportItem {
+  padding-top: 14px;
+  border-top: 1px solid rgba(118, 85, 85, 0.11);
+}
+
+.exportItem:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.exportAnswerList {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.exportAnswerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.exportColumnLabel {
+  min-width: 0;
+  color: var(--soft-text);
+  font-size: 0.82rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .optionButton {
   width: 20px;
   height: 20px;
@@ -514,6 +568,12 @@
   gap: 8px;
 }
 
+.toggleGridTriple {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .toggleButton {
   padding: 10px 12px;
   border-radius: 14px;
@@ -559,7 +619,8 @@
   }
 
   .metaList,
-  .toggleGrid {
+  .toggleGrid,
+  .toggleGridTriple {
     grid-template-columns: 1fr;
   }
 
@@ -573,5 +634,23 @@
 
   .table {
     min-width: 0;
+  }
+
+  .exportBoard {
+    width: 980px;
+  }
+
+  .exportSections {
+    column-count: 2;
+  }
+}
+
+@media (max-width: 980px) {
+  .exportBoard {
+    width: 760px;
+  }
+
+  .exportSections {
+    column-count: 1;
   }
 }

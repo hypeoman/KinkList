@@ -7,6 +7,8 @@ import { type Locale, localeMessages, localeOptions, type Theme } from "@/lib/i1
 import {
   DEFAULT_OPTIONS,
   type AnswersState,
+  type KinkItem,
+  type KinkSection,
   createAnswerKey,
   createSummaryText,
   deserializePayload,
@@ -19,6 +21,23 @@ type SharedState = {
   answers?: AnswersState;
   locale?: Locale;
   theme?: Theme;
+};
+
+type FilterMode = "all" | "answered" | "unanswered";
+
+type ExportSection = {
+  id: string;
+  title: string;
+  columns: string[];
+  items: Array<{
+    id: string;
+    title: string;
+    hint?: string;
+    answers: Array<{
+      column: string;
+      optionId: string;
+    }>;
+  }>;
 };
 
 function downloadFile(filename: string, contents: string, mimeType: string) {
@@ -72,6 +91,7 @@ export default function HomePage() {
   const [configDraft, setConfigDraft] = useState(englishDefaults.defaultConfig);
   const [answers, setAnswers] = useState<AnswersState>({});
   const [search, setSearch] = useState("");
+  const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [statusMessage, setStatusMessage] = useState("");
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -149,21 +169,96 @@ export default function HomePage() {
     [rawConfig, t]
   );
   const options = parsedConfig.options.length > 0 ? parsedConfig.options : DEFAULT_OPTIONS;
-  const filteredSections = useMemo(() => {
-    if (!deferredSearch) {
-      return parsedConfig.sections;
-    }
 
+  function itemHasAnsweredValue(section: KinkSection, item: KinkItem) {
+    return section.columns.some((_, columnIndex) => {
+      const cellKey = createAnswerKey(section.id, item.id, columnIndex);
+      const value = answers[cellKey] ?? "not-entered";
+      return value !== "not-entered";
+    });
+  }
+
+  const filteredSections = useMemo(() => {
     return parsedConfig.sections
       .map((section) => ({
         ...section,
         items: section.items.filter((item) => {
           const haystack = `${item.title} ${item.hint ?? ""}`.toLowerCase();
-          return haystack.includes(deferredSearch);
+          const matchesSearch = !deferredSearch || haystack.includes(deferredSearch);
+          const hasAnsweredValue = itemHasAnsweredValue(section, item);
+
+          if (!matchesSearch) {
+            return false;
+          }
+
+          if (filterMode === "answered") {
+            return hasAnsweredValue;
+          }
+
+          if (filterMode === "unanswered") {
+            return !hasAnsweredValue;
+          }
+
+          return true;
         })
       }))
       .filter((section) => section.items.length > 0);
-  }, [deferredSearch, parsedConfig.sections]);
+  }, [answers, deferredSearch, filterMode, parsedConfig.sections]);
+
+  const exportSections = useMemo<ExportSection[]>(() => {
+    const sections = parsedConfig.sections
+      .map((section) => ({
+        id: section.id,
+        title: section.title,
+        columns: section.columns,
+        items: section.items
+          .map((item) => {
+            const itemAnswers = section.columns
+              .map((column, columnIndex) => {
+                const cellKey = createAnswerKey(section.id, item.id, columnIndex);
+                const optionId = answers[cellKey] ?? "not-entered";
+
+                return {
+                  column,
+                  optionId
+                };
+              })
+              .filter((answer) => answer.optionId !== "not-entered");
+
+            if (itemAnswers.length === 0) {
+              return null;
+            }
+
+            return {
+              id: item.id,
+              title: item.title,
+              hint: item.hint,
+              answers: itemAnswers
+            };
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+      }))
+      .filter((section) => section.items.length > 0);
+
+    if (sections.length > 0) {
+      return sections;
+    }
+
+    return parsedConfig.sections.map((section) => ({
+      id: section.id,
+      title: section.title,
+      columns: section.columns,
+      items: section.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        hint: item.hint,
+        answers: section.columns.map((column, columnIndex) => ({
+          column,
+          optionId: answers[createAnswerKey(section.id, item.id, columnIndex)] ?? "not-entered"
+        }))
+      }))
+    }));
+  }, [answers, parsedConfig.sections]);
 
   const shareUrl = useMemo(
     () =>
@@ -261,9 +356,14 @@ export default function HomePage() {
   }
 
   const totalItems = parsedConfig.sections.reduce((sum, section) => sum + section.items.length, 0);
+  const visibleItems = filteredSections.reduce((sum, section) => sum + section.items.length, 0);
   const answeredCount = Object.entries(answers).filter(
     ([, value]) => value && value !== "not-entered"
   ).length;
+  const answeredItems = parsedConfig.sections.reduce(
+    (sum, section) => sum + section.items.filter((item) => itemHasAnsweredValue(section, item)).length,
+    0
+  );
   const optionMap = useMemo(() => new Map(options.map((option) => [option.id, option])), [options]);
 
   return (
@@ -355,6 +455,14 @@ export default function HomePage() {
               <strong>{answeredCount}</strong>
               <span>{t.answeredCells}</span>
             </div>
+            <div className={styles.metaCard}>
+              <strong>{answeredItems}</strong>
+              <span>{t.answeredItems}</span>
+            </div>
+            <div className={styles.metaCard}>
+              <strong>{visibleItems}</strong>
+              <span>{t.visibleItems}</span>
+            </div>
           </div>
 
           <div className={styles.searchWrap}>
@@ -368,6 +476,33 @@ export default function HomePage() {
               placeholder={t.searchPlaceholder}
               value={search}
             />
+          </div>
+
+          <div className={styles.toggleWrap}>
+            <p className={styles.toggleLabel}>{t.filterLabel}</p>
+            <div className={styles.toggleGridTriple}>
+              <button
+                className={`${styles.toggleButton} ${filterMode === "all" ? styles.toggleButtonActive : ""}`}
+                onClick={() => setFilterMode("all")}
+                type="button"
+              >
+                {t.filterAll}
+              </button>
+              <button
+                className={`${styles.toggleButton} ${filterMode === "answered" ? styles.toggleButtonActive : ""}`}
+                onClick={() => setFilterMode("answered")}
+                type="button"
+              >
+                {t.filterAnswered}
+              </button>
+              <button
+                className={`${styles.toggleButton} ${filterMode === "unanswered" ? styles.toggleButtonActive : ""}`}
+                onClick={() => setFilterMode("unanswered")}
+                type="button"
+              >
+                {t.filterUnanswered}
+              </button>
+            </div>
           </div>
 
           <div className={styles.actions}>
@@ -513,6 +648,9 @@ export default function HomePage() {
             <div>
               <h2 className={styles.exportName}>{exportName || t.exportDefaultName}</h2>
               <p className={styles.exportMeta}>{t.exportSubtitle}</p>
+              <p className={styles.exportMetaSecondary}>
+                {answeredItems > 0 ? t.exportFilledOnly : t.exportAllItems}
+              </p>
             </div>
             <div className={styles.legendGrid}>
               {options.map((option) => (
@@ -524,56 +662,41 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className={styles.sections}>
-            {parsedConfig.sections.map((section) => (
-              <article className={styles.section} key={`export-section-${section.id}`}>
+          <div className={styles.exportSections}>
+            {exportSections.map((section) => (
+              <article className={`${styles.section} ${styles.exportSection}`} key={`export-section-${section.id}`}>
                 <div className={styles.sectionHeader}>
                   <h3 className={styles.sectionTitle}>{section.title}</h3>
                 </div>
-                <div className={styles.tableWrap}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>{t.itemColumn}</th>
-                        {section.columns.map((column) => (
-                          <th key={`export-column-${section.id}-${column}`}>{column}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {section.items.map((item) => (
-                        <tr key={`export-item-${item.id}`}>
-                          <td
-                            className={
-                              section.columns.length === 0 ? styles.itemOnlyCell : styles.itemCell
-                            }
-                          >
-                            <div className={styles.itemTitle}>{item.title}</div>
-                            {item.hint ? <div className={styles.itemHint}>{item.hint}</div> : null}
-                          </td>
-                          {section.columns.map((column, columnIndex) => {
-                            const cellKey = createAnswerKey(section.id, item.id, columnIndex);
-                            const selectedId = answers[cellKey] ?? "not-entered";
-                            const selectedOption = optionMap.get(selectedId) ?? optionMap.get("not-entered");
+                <div className={styles.exportItems}>
+                  {section.items.map((item) => (
+                    <div className={styles.exportItem} key={`export-item-${item.id}`}>
+                      <div className={styles.itemTitle}>{item.title}</div>
+                      {item.hint ? <div className={styles.itemHint}>{item.hint}</div> : null}
+                      <div className={styles.exportAnswerList}>
+                        {item.answers.map((answer, answerIndex) => {
+                          const selectedOption = optionMap.get(answer.optionId) ?? optionMap.get("not-entered");
 
-                            return (
-                              <td className={styles.cell} key={`export-cell-${column}-${item.id}`}>
-                                <span
-                                  className={styles.answerBadge}
-                                  style={{
-                                    background: selectedOption?.color ?? "#ffffff",
-                                    color: selectedOption?.textColor ?? "#2c1a1a"
-                                  }}
-                                >
-                                  {selectedOption?.label ?? t.notEnteredLabel}
-                                </span>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          return (
+                            <div className={styles.exportAnswerRow} key={`export-answer-${item.id}-${answerIndex}`}>
+                              <span className={styles.exportColumnLabel}>
+                                {answer.column || `${t.itemColumn} ${answerIndex + 1}`}
+                              </span>
+                              <span
+                                className={styles.answerBadge}
+                                style={{
+                                  background: selectedOption?.color ?? "#ffffff",
+                                  color: selectedOption?.textColor ?? "#2c1a1a"
+                                }}
+                              >
+                                {selectedOption?.label ?? t.notEnteredLabel}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </article>
             ))}
