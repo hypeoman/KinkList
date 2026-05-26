@@ -370,149 +370,160 @@ export default function HomePage() {
     <main className={`${styles.page} ${theme === "dark" ? styles.themeDark : styles.themeLight}`}>
       <div className={styles.shell}>
         <aside className={styles.panel}>
-          <p className={styles.eyebrow}>{t.eyebrow}</p>
-          <h1 className={styles.title}>{t.title}</h1>
-          <p className={styles.lead}>{t.lead}</p>
-
-          <section className={styles.legend}>
-            <p className={styles.legendTitle}>{t.legendTitle}</p>
-            <div className={styles.legendGrid}>
-              {options.map((option) => (
-                <div className={styles.legendItem} key={option.id}>
-                  <span className={styles.swatch} style={{ background: option.color }} />
-                  <span>{option.label}</span>
-                </div>
-              ))}
+          <div className={styles.panelHeader}>
+            <div>
+              <p className={styles.eyebrow}>{t.eyebrow}</p>
+              <h1 className={styles.title}>{t.title}</h1>
+              <p className={styles.lead}>{t.lead}</p>
             </div>
-          </section>
 
-            <div className={styles.toggleWrap}>
-              <p className={styles.toggleLabel}>{t.localeLabel}</p>
-              <div className={styles.selectWrap}>
-                <select
-                  className={styles.selectInput}
-                  onChange={(event) => setLocale(event.target.value as Locale)}
-                  value={locale}
-                >
-                  {localeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {t[option.labelKey]}
-                    </option>
-                  ))}
-                </select>
+            <div className={styles.metaList}>
+              <div className={styles.metaCard}>
+                <strong>{parsedConfig.sections.length}</strong>
+                <span>{t.sections}</span>
+              </div>
+              <div className={styles.metaCard}>
+                <strong>{totalItems}</strong>
+                <span>{t.items}</span>
+              </div>
+              <div className={styles.metaCard}>
+                <strong>{options.length}</strong>
+                <span>{t.variants}</span>
+              </div>
+              <div className={styles.metaCard}>
+                <strong>{answeredCount}</strong>
+                <span>{t.answeredCells}</span>
+              </div>
+              <div className={styles.metaCard}>
+                <strong>{answeredItems}</strong>
+                <span>{t.answeredItems}</span>
+              </div>
+              <div className={styles.metaCard}>
+                <strong>{visibleItems}</strong>
+                <span>{t.visibleItems}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.panelControls}>
+            <section className={styles.controlBlock}>
+              <p className={styles.legendTitle}>{t.legendTitle}</p>
+              <div className={styles.legendGrid}>
+                {options.map((option) => (
+                  <div className={styles.legendItem} key={option.id}>
+                    <span className={styles.swatch} style={{ background: option.color }} />
+                    <span>{option.label}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <div className={styles.controlBlock}>
+              <div className={styles.toggleWrap}>
+                <p className={styles.toggleLabel}>{t.localeLabel}</p>
+                <div className={styles.selectWrap}>
+                  <select
+                    className={styles.selectInput}
+                    onChange={(event) => setLocale(event.target.value as Locale)}
+                    value={locale}
+                  >
+                    {localeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {t[option.labelKey]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className={styles.toggleWrap}>
+                <p className={styles.toggleLabel}>{t.themeLabel}</p>
+                <div className={styles.toggleGrid}>
+                  <button
+                    className={`${styles.toggleButton} ${theme === "light" ? styles.toggleButtonActive : ""}`}
+                    onClick={() => setTheme("light")}
+                    type="button"
+                  >
+                    {t.lightTheme}
+                  </button>
+                  <button
+                    className={`${styles.toggleButton} ${theme === "dark" ? styles.toggleButtonActive : ""}`}
+                    onClick={() => setTheme("dark")}
+                    type="button"
+                  >
+                    {t.darkTheme}
+                  </button>
+                </div>
               </div>
             </div>
 
-          <div className={styles.toggleWrap}>
-            <p className={styles.toggleLabel}>{t.themeLabel}</p>
-            <div className={styles.toggleGrid}>
-              <button
-                className={`${styles.toggleButton} ${theme === "light" ? styles.toggleButtonActive : ""}`}
-                onClick={() => setTheme("light")}
-                type="button"
-              >
-                {t.lightTheme}
-              </button>
-              <button
-                className={`${styles.toggleButton} ${theme === "dark" ? styles.toggleButtonActive : ""}`}
-                onClick={() => setTheme("dark")}
-                type="button"
-              >
-                {t.darkTheme}
-              </button>
-            </div>
-          </div>
+            <div className={styles.controlBlock}>
+              <div className={styles.searchWrap}>
+                <label className={styles.searchLabel} htmlFor="search">
+                  {t.searchLabel}
+                </label>
+                <input
+                  className={styles.searchInput}
+                  id="search"
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={t.searchPlaceholder}
+                  value={search}
+                />
+              </div>
 
-          <div className={styles.actions}>
-            <button className={styles.actionPrimary} onClick={handleExportImage} type="button">
-              {t.downloadPng}
-            </button>
-            <button className={styles.actionSecondary} onClick={handleDownloadText} type="button">
-              {t.downloadTxt}
-            </button>
-            <button className={styles.actionGhost} onClick={handleCopyText} type="button">
-              {t.copyText}
-            </button>
-            <button className={styles.actionGhost} onClick={handleCopyLink} type="button">
-              {t.copyLink}
-            </button>
-          </div>
+              <div className={styles.toggleWrap}>
+                <p className={styles.toggleLabel}>{t.filterLabel}</p>
+                <div className={styles.toggleGridTriple}>
+                  <button
+                    className={`${styles.toggleButton} ${filterMode === "all" ? styles.toggleButtonActive : ""}`}
+                    onClick={() => setFilterMode("all")}
+                    type="button"
+                  >
+                    {t.filterAll}
+                  </button>
+                  <button
+                    className={`${styles.toggleButton} ${filterMode === "answered" ? styles.toggleButtonActive : ""}`}
+                    onClick={() => setFilterMode("answered")}
+                    type="button"
+                  >
+                    {t.filterAnswered}
+                  </button>
+                  <button
+                    className={`${styles.toggleButton} ${filterMode === "unanswered" ? styles.toggleButtonActive : ""}`}
+                    onClick={() => setFilterMode("unanswered")}
+                    type="button"
+                  >
+                    {t.filterUnanswered}
+                  </button>
+                </div>
+              </div>
+            </div>
 
-          <div className={styles.metaList}>
-            <div className={styles.metaCard}>
-              <strong>{parsedConfig.sections.length}</strong>
-              <span>{t.sections}</span>
-            </div>
-            <div className={styles.metaCard}>
-              <strong>{totalItems}</strong>
-              <span>{t.items}</span>
-            </div>
-            <div className={styles.metaCard}>
-              <strong>{options.length}</strong>
-              <span>{t.variants}</span>
-            </div>
-            <div className={styles.metaCard}>
-              <strong>{answeredCount}</strong>
-              <span>{t.answeredCells}</span>
-            </div>
-            <div className={styles.metaCard}>
-              <strong>{answeredItems}</strong>
-              <span>{t.answeredItems}</span>
-            </div>
-            <div className={styles.metaCard}>
-              <strong>{visibleItems}</strong>
-              <span>{t.visibleItems}</span>
-            </div>
-          </div>
+            <div className={styles.controlBlock}>
+              <div className={styles.actions}>
+                <button className={styles.actionPrimary} onClick={handleExportImage} type="button">
+                  {t.downloadPng}
+                </button>
+                <button className={styles.actionSecondary} onClick={handleDownloadText} type="button">
+                  {t.downloadTxt}
+                </button>
+                <button className={styles.actionGhost} onClick={handleCopyText} type="button">
+                  {t.copyText}
+                </button>
+                <button className={styles.actionGhost} onClick={handleCopyLink} type="button">
+                  {t.copyLink}
+                </button>
+                <button
+                  className={styles.actionSecondary}
+                  onClick={() => setIsConfigOpen((currentValue) => !currentValue)}
+                  type="button"
+                >
+                  {isConfigOpen ? t.hideConfigure : t.configure}
+                </button>
+              </div>
 
-          <div className={styles.searchWrap}>
-            <label className={styles.searchLabel} htmlFor="search">
-              {t.searchLabel}
-            </label>
-            <input
-              className={styles.searchInput}
-              id="search"
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={t.searchPlaceholder}
-              value={search}
-            />
-          </div>
-
-          <div className={styles.toggleWrap}>
-            <p className={styles.toggleLabel}>{t.filterLabel}</p>
-            <div className={styles.toggleGridTriple}>
-              <button
-                className={`${styles.toggleButton} ${filterMode === "all" ? styles.toggleButtonActive : ""}`}
-                onClick={() => setFilterMode("all")}
-                type="button"
-              >
-                {t.filterAll}
-              </button>
-              <button
-                className={`${styles.toggleButton} ${filterMode === "answered" ? styles.toggleButtonActive : ""}`}
-                onClick={() => setFilterMode("answered")}
-                type="button"
-              >
-                {t.filterAnswered}
-              </button>
-              <button
-                className={`${styles.toggleButton} ${filterMode === "unanswered" ? styles.toggleButtonActive : ""}`}
-                onClick={() => setFilterMode("unanswered")}
-                type="button"
-              >
-                {t.filterUnanswered}
-              </button>
+              <div className={styles.status}>{isPending ? t.updatingConfig : statusMessage}</div>
             </div>
-          </div>
-
-          <div className={styles.actions}>
-            <button
-              className={styles.actionSecondary}
-              onClick={() => setIsConfigOpen((currentValue) => !currentValue)}
-              type="button"
-            >
-              {isConfigOpen ? t.hideConfigure : t.configure}
-            </button>
           </div>
 
           {isConfigOpen ? (
@@ -549,8 +560,6 @@ export default function HomePage() {
               <p className={styles.hint}>{t.configFormatHelp}</p>
             </section>
           ) : null}
-
-          <div className={styles.status}>{isPending ? t.updatingConfig : statusMessage}</div>
         </aside>
 
         <section className={styles.board} ref={exportRef}>
