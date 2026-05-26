@@ -230,6 +230,86 @@ export function deserializePayload<T>(serialized: string | null): T | null {
   }
 }
 
+export function serializeAnswersPayload(
+  answers: AnswersState,
+  sections: KinkSection[],
+  options: ChoiceOption[]
+): string {
+  const optionIndexById = new Map(
+    options.map((option, index) => [option.id, index.toString(36)])
+  );
+  const entries: string[] = [];
+  let cellIndex = 0;
+
+  sections.forEach((section) => {
+    section.items.forEach((item) => {
+      section.columns.forEach((_, columnIndex) => {
+        const key = createAnswerKey(section.id, item.id, columnIndex);
+        const value = answers[key];
+        const optionIndex = value ? optionIndexById.get(value) : null;
+
+        if (optionIndex && value !== "not-entered") {
+          entries.push(`${cellIndex.toString(36)}.${optionIndex}`);
+        }
+
+        cellIndex += 1;
+      });
+    });
+  });
+
+  return `v1:${entries.join("-")}`;
+}
+
+export function deserializeAnswersPayload(
+  serialized: string | null,
+  sections: KinkSection[],
+  options: ChoiceOption[]
+): AnswersState | null {
+  if (!serialized) {
+    return null;
+  }
+
+  if (!serialized.startsWith("v1:")) {
+    return deserializePayload<AnswersState>(serialized);
+  }
+
+  const encodedEntries = serialized.slice(3);
+  if (!encodedEntries) {
+    return {};
+  }
+
+  const cells: string[] = [];
+  sections.forEach((section) => {
+    section.items.forEach((item) => {
+      section.columns.forEach((_, columnIndex) => {
+        cells.push(createAnswerKey(section.id, item.id, columnIndex));
+      });
+    });
+  });
+
+  const resolvedAnswers: AnswersState = {};
+
+  try {
+    encodedEntries.split("-").forEach((entry) => {
+      const [cellPart, optionPart] = entry.split(".");
+      const cellIndex = Number.parseInt(cellPart, 36);
+      const optionIndex = Number.parseInt(optionPart, 36);
+      const cellKey = cells[cellIndex];
+      const option = options[optionIndex];
+
+      if (!cellKey || !option || option.id === "not-entered") {
+        return;
+      }
+
+      resolvedAnswers[cellKey] = option.id;
+    });
+
+    return resolvedAnswers;
+  } catch {
+    return null;
+  }
+}
+
 export function createSummaryText(
   sections: KinkSection[],
   answers: AnswersState,

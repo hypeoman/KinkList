@@ -11,8 +11,10 @@ import {
   type KinkSection,
   createAnswerKey,
   createSummaryText,
+  deserializeAnswersPayload,
   deserializePayload,
   parseConfig,
+  serializeAnswersPayload,
   serializePayload
 } from "@/lib/kinklist";
 
@@ -21,6 +23,7 @@ type SharedState = {
   answers?: AnswersState;
   locale?: Locale;
   theme?: Theme;
+  parsedConfig: ReturnType<typeof parseConfig>;
 };
 
 type FilterMode = "all" | "answered" | "unanswered";
@@ -63,19 +66,26 @@ function buildShareUrl(sharedState: SharedState) {
   const params = new URLSearchParams();
 
   if (sharedState.config) {
-    params.set("config", serializePayload(sharedState.config));
+    params.set("c", serializePayload(sharedState.config));
   }
 
   if (sharedState.answers && Object.keys(sharedState.answers).length > 0) {
-    params.set("answers", serializePayload(sharedState.answers));
+    params.set(
+      "a",
+      serializeAnswersPayload(
+        sharedState.answers,
+        sharedState.parsedConfig.sections,
+        sharedState.parsedConfig.options.length > 0 ? sharedState.parsedConfig.options : DEFAULT_OPTIONS
+      )
+    );
   }
 
   if (sharedState.locale && sharedState.locale !== "ru") {
-    params.set("locale", serializePayload(sharedState.locale));
+    params.set("l", sharedState.locale);
   }
 
   if (sharedState.theme && sharedState.theme !== "light") {
-    params.set("theme", serializePayload(sharedState.theme));
+    params.set("t", sharedState.theme);
   }
 
   url.search = params.toString();
@@ -104,21 +114,41 @@ export default function HomePage() {
   useEffect(() => {
     let isCancelled = false;
     const url = new URL(window.location.href);
-    const sharedConfig = deserializePayload<string>(url.searchParams.get("config"));
-    const sharedAnswers = deserializePayload<AnswersState>(url.searchParams.get("answers"));
-    const sharedLocale = deserializePayload<Locale>(url.searchParams.get("locale"));
-    const sharedTheme = deserializePayload<Theme>(url.searchParams.get("theme"));
+    const sharedConfig = deserializePayload<string>(
+      url.searchParams.get("c") ?? url.searchParams.get("config")
+    );
+    const sharedLocaleParam = url.searchParams.get("l");
+    const sharedThemeParam = url.searchParams.get("t");
+    const sharedLocale =
+      sharedLocaleParam === "ru" || sharedLocaleParam === "en"
+        ? sharedLocaleParam
+        : deserializePayload<Locale>(url.searchParams.get("locale"));
+    const sharedTheme =
+      sharedThemeParam === "light" || sharedThemeParam === "dark"
+        ? sharedThemeParam
+        : deserializePayload<Theme>(url.searchParams.get("theme"));
     const resolvedLocale = sharedLocale === "en" ? "en" : "ru";
     const localeDefaults = localeMessages[resolvedLocale] ?? englishDefaults;
     const resolvedDefaultConfig = localeDefaults.defaultConfig || englishDefaults.defaultConfig;
+    const resolvedConfig = sharedConfig ?? resolvedDefaultConfig;
+    const parsedSharedConfig = parseConfig(resolvedConfig, {
+      anonymousSection: localeMessages[resolvedLocale].anonymousSection,
+      untitledSection: localeMessages[resolvedLocale].untitledSection,
+      untitledItem: localeMessages[resolvedLocale].untitledItem
+    });
+    const sharedAnswers = deserializeAnswersPayload(
+      url.searchParams.get("a") ?? url.searchParams.get("answers"),
+      parsedSharedConfig.sections,
+      parsedSharedConfig.options.length > 0 ? parsedSharedConfig.options : DEFAULT_OPTIONS
+    );
 
     if (!isCancelled) {
       previousDefaultConfigRef.current = resolvedDefaultConfig;
       setLocale(resolvedLocale);
       setTheme(sharedTheme === "dark" ? "dark" : "light");
       setDefaultConfig(resolvedDefaultConfig);
-      setRawConfig(sharedConfig ?? resolvedDefaultConfig);
-      setConfigDraft(sharedConfig ?? resolvedDefaultConfig);
+      setRawConfig(resolvedConfig);
+      setConfigDraft(resolvedConfig);
       setAnswers(sharedAnswers ?? {});
       initializedRef.current = true;
     }
@@ -268,9 +298,10 @@ export default function HomePage() {
             config: rawConfig !== defaultConfig ? rawConfig : undefined,
             answers,
             locale,
-            theme
+            theme,
+            parsedConfig
           }),
-    [answers, defaultConfig, locale, rawConfig, theme]
+    [answers, defaultConfig, locale, parsedConfig, rawConfig, theme]
   );
 
   useEffect(() => {
@@ -282,11 +313,12 @@ export default function HomePage() {
       config: rawConfig !== defaultConfig ? rawConfig : undefined,
       answers,
       locale,
-      theme
+      theme,
+      parsedConfig
     });
 
     window.history.replaceState({}, "", nextUrl);
-  }, [answers, defaultConfig, locale, rawConfig, theme]);
+  }, [answers, defaultConfig, locale, parsedConfig, rawConfig, theme]);
 
   function setAnswer(cellKey: string, optionId: string) {
     setAnswers((currentAnswers) => ({
