@@ -111,6 +111,21 @@ This repository includes a GitHub Actions workflow for GitHub Pages deployment:
 
 Once GitHub Pages is enabled for the repository, pushes to `main` can publish the site automatically.
 
+## Roadmap
+
+Planned directions for future development:
+
+- [ ] Add checklist presets for different use cases.
+- [ ] Add a partner comparison mode with match/conflict filters.
+- [ ] Add local saved lists without requiring accounts or a backend.
+- [ ] Add import/export for checklist configuration files.
+- [ ] Add a visual checklist editor for sections, items, columns, and response options.
+- [ ] Improve PNG export with compact/full layouts and answered-only mode.
+- [ ] Add PDF export.
+- [ ] Add parser and serializer unit tests.
+- [ ] Add automatic locale consistency checks.
+- [ ] Improve accessibility, including keyboard navigation and screen reader feedback.
+
 ## Project structure
 
 - [`app/`](./app) - app routes, page UI, and styles
