@@ -1,6 +1,20 @@
 # KinkList
 
-KinkList is a static Next.js app for building, filling, and sharing customizable kink checklists. It is designed to work on GitHub Pages, so the site can be hosted as a simple static export without a backend.
+KinkList is a privacy-first static Next.js app for building, filling, and sharing customizable kink checklists. It is designed to work on GitHub Pages, so the site can be hosted as a simple static export without a backend.
+
+## Live demo
+
+Try KinkList here: [https://hypeoman.github.io/KinkList/](https://hypeoman.github.io/KinkList/)
+
+## Preview
+
+Screenshot placeholder:
+
+![KinkList screenshot](./public/screenshot.png)
+
+GIF/demo placeholder:
+
+![KinkList demo GIF](./public/demo.gif)
 
 ## What the site does
 
